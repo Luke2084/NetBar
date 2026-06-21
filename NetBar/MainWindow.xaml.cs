@@ -3,7 +3,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.NetworkInformation;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
@@ -34,13 +33,14 @@ namespace NetBar
         private DateTime lastUpdateTime = DateTime.Now;
 
         // 主题控制
-        private enum ThemeMode { FollowSystem, Light, Dark }
-        private ThemeMode _themeMode = ThemeMode.FollowSystem;
+        private enum AppThemeMode { FollowSystem, Light, Dark }
+        private AppThemeMode _themeMode = AppThemeMode.FollowSystem;
         private bool _themeMonitoringEnabled = false;
         private System.Windows.Controls.MenuItem? _miThemeFollow;
         private System.Windows.Controls.MenuItem? _miThemeLight;
         private System.Windows.Controls.MenuItem? _miThemeDark;
         private System.Windows.Controls.MenuItem? _miAutoStart;
+        private System.Windows.Controls.MenuItem? _miAutoUpdate;
 
         // 本地配置
         private AppSettings _settings = new AppSettings();
@@ -50,6 +50,7 @@ namespace NetBar
         private class AppSettings
         {
             public bool AutoStart { get; set; } = false;
+            public bool AutoUpdate { get; set; } = true;
             public string ThemeMode { get; set; } = "FollowSystem"; // FollowSystem | Light | Dark
             public bool LeftDragMove { get; set; } = true; // 是否允许左键拖动窗口
             public double? SavedLeft { get; set; } = null; // 记录上次水平位置
@@ -128,9 +129,6 @@ namespace NetBar
         private DateTime _lastPositionTime = DateTime.MinValue;
         // Deactivated 延迟任务控制
         private CancellationTokenSource? _deactivatedCts;
-        // 位置调整并发守卫
-        private int _positioningGuard = 0;
-
         // Taskbar API
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT { public int left, top, right, bottom; }
@@ -295,7 +293,11 @@ namespace NetBar
             SetInitialPositionInWorkArea();
             try { this.Topmost = true; _topmostEnabled = false; } catch { }
             // 处理 Loaded 后可能的窗口激活问题
-            this.Dispatcher.BeginInvoke(new Action(() => this.Activate()));
+            _ = this.Dispatcher.BeginInvoke(new Action(() => this.Activate()));
+            if (_settings.AutoUpdate)
+            {
+                _ = CheckForUpdatesAsync(silent: true);
+            }
         }
 
         private void InitializeNetworkCounters()
@@ -398,7 +400,7 @@ namespace NetBar
                             double uploadSpeed = (uploadBytes - lastUploadBytes) / Math.Max(intervalSec, 1e-6) / 1024.0;
 
                             // 更新 UI
-                            this.Dispatcher.BeginInvoke(new Action(() =>
+                            _ = this.Dispatcher.BeginInvoke(new Action(() =>
                             {
                                 DownloadText.Text = $"↓ {FormatSpeed(downloadSpeed)}";
                                 UploadText.Text = $"↑ {FormatSpeed(uploadSpeed)}";
@@ -454,9 +456,9 @@ namespace NetBar
 
         private void SyncThemeChecks()
         {
-            if (_miThemeFollow != null) _miThemeFollow.IsChecked = _themeMode == ThemeMode.FollowSystem;
-            if (_miThemeLight != null) _miThemeLight.IsChecked = _themeMode == ThemeMode.Light;
-            if (_miThemeDark != null) _miThemeDark.IsChecked = _themeMode == ThemeMode.Dark;
+            if (_miThemeFollow != null) _miThemeFollow.IsChecked = _themeMode == AppThemeMode.FollowSystem;
+            if (_miThemeLight != null) _miThemeLight.IsChecked = _themeMode == AppThemeMode.Light;
+            if (_miThemeDark != null) _miThemeDark.IsChecked = _themeMode == AppThemeMode.Dark;
         }
 
         private void EnsureWindowTopmost()
@@ -528,7 +530,7 @@ namespace NetBar
                                 // 仅恢复原生 topmost，不改 WPF 可见性/激活，避免闪烁
                                 try
                                 {
-                                    this.Dispatcher.BeginInvoke(new Action(() =>
+                                    _ = this.Dispatcher.BeginInvoke(new Action(() =>
                                     {
                                         try
                                         {
@@ -588,6 +590,7 @@ namespace NetBar
         {
             // EMERGENCY: 临时完全禁用自动/强制定位以阻止窗口被移出可见区域
             LogDebug("PositionWindowAtTaskbarSide disabled by emergency stop");
+#pragma warning disable CS0162 // Keep legacy positioning code available while the emergency stop is active.
             return;
 
                 if (!_autoPositionEnabled && !force)
@@ -730,6 +733,7 @@ namespace NetBar
                     catch { }
                     LogDebug($"PositionWindowAtTaskbarSide applied: Left={this.Left:F0} Top={this.Top:F0} Width={this.Width:F0} Height={this.Height:F0}");
                 }));
+#pragma warning restore CS0162
         }
 
         private bool TryGetTrayNotifyRect(out RECT rect)
@@ -791,7 +795,7 @@ namespace NetBar
                         _settings = obj;
                         // 应用设置
 
-                        if (Enum.TryParse<ThemeMode>(_settings.ThemeMode, out var tm))
+                        if (Enum.TryParse<AppThemeMode>(_settings.ThemeMode, out var tm))
                         {
                             _themeMode = tm;
                         }
@@ -841,13 +845,13 @@ namespace NetBar
                 var lnk = Path.Combine(startup, "NetBar.lnk");
                 if (enable)
                 {
-                    string? exe = Assembly.GetEntryAssembly()?.Location;
-                    if (string.IsNullOrEmpty(exe)) exe = Process.GetCurrentProcess().MainModule?.FileName;
+                    string? exe = UpdateService.GetExecutablePath();
                     if (string.IsNullOrEmpty(exe)) return;
                     // Create shortcut via WScript.Shell COM
                     Type? t = Type.GetTypeFromProgID("WScript.Shell");
                     if (t == null) return;
-                    dynamic shell = Activator.CreateInstance(t);
+                    dynamic? shell = Activator.CreateInstance(t);
+                    if (shell == null) return;
                     dynamic shortcut = shell.CreateShortcut(lnk);
                     shortcut.TargetPath = exe;
                     shortcut.WorkingDirectory = Path.GetDirectoryName(exe);
@@ -886,7 +890,7 @@ namespace NetBar
             try
             {
                 System.Windows.Media.Brush brush;
-                if (_themeMode == ThemeMode.FollowSystem)
+                if (_themeMode == AppThemeMode.FollowSystem)
                 {
                     var val = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1);
                     int useLight = 1;
@@ -895,7 +899,7 @@ namespace NetBar
                     else if (val != null) useLight = Convert.ToInt32(val);
                     brush = useLight == 1 ? System.Windows.Media.Brushes.Black : System.Windows.Media.Brushes.White;
                 }
-                else if (_themeMode == ThemeMode.Light)
+                else if (_themeMode == AppThemeMode.Light)
                 {
                     brush = System.Windows.Media.Brushes.Black;
                 }
@@ -909,9 +913,9 @@ namespace NetBar
                     DownloadText.Foreground = brush;
                     UploadText.Foreground = brush;
                     // 更新菜单项前景色及选中状态
-                    if (_miThemeFollow != null) _miThemeFollow.IsChecked = _themeMode == ThemeMode.FollowSystem;
-                    if (_miThemeLight != null) _miThemeLight.IsChecked = _themeMode == ThemeMode.Light;
-                    if (_miThemeDark != null) _miThemeDark.IsChecked = _themeMode == ThemeMode.Dark;
+                    if (_miThemeFollow != null) _miThemeFollow.IsChecked = _themeMode == AppThemeMode.FollowSystem;
+                    if (_miThemeLight != null) _miThemeLight.IsChecked = _themeMode == AppThemeMode.Light;
+                    if (_miThemeDark != null) _miThemeDark.IsChecked = _themeMode == AppThemeMode.Dark;
                 }));
             }
             catch { }
@@ -927,11 +931,16 @@ namespace NetBar
                 _miThemeLight = FindMenuItemByName(cm.Items, "MenuThemeLight");
                 _miThemeDark = FindMenuItemByName(cm.Items, "MenuThemeDark");
                 _miAutoStart = FindMenuItemByName(cm.Items, "MenuAutoStart");
+                _miAutoUpdate = FindMenuItemByName(cm.Items, "MenuAutoUpdate");
                 var miLeftMove = FindMenuItemByName(cm.Items, "MenuLeftMove");
                 if (miLeftMove != null) miLeftMove.IsChecked = _settings.LeftDragMove;
                 if (_miAutoStart != null)
                 {
                     _miAutoStart.IsChecked = _settings.AutoStart;
+                }
+                if (_miAutoUpdate != null)
+                {
+                    _miAutoUpdate.IsChecked = _settings.AutoUpdate;
                 }
             }
             catch { }
@@ -952,10 +961,10 @@ namespace NetBar
             return null;
         }
 
-        private void SetThemeMode(ThemeMode mode)
+        private void SetThemeMode(AppThemeMode mode)
         {
             _themeMode = mode;
-            if (_themeMode == ThemeMode.FollowSystem)
+            if (_themeMode == AppThemeMode.FollowSystem)
                 SetupThemeMonitoring();
             else
                 TearDownThemeMonitoring();
@@ -967,9 +976,9 @@ namespace NetBar
             SaveSettings();
         }
 
-        private void MenuThemeFollow_Click(object sender, RoutedEventArgs e) => SetThemeMode(ThemeMode.FollowSystem);
-        private void MenuThemeLight_Click(object sender, RoutedEventArgs e) => SetThemeMode(ThemeMode.Light);
-        private void MenuThemeDark_Click(object sender, RoutedEventArgs e) => SetThemeMode(ThemeMode.Dark);
+        private void MenuThemeFollow_Click(object sender, RoutedEventArgs e) => SetThemeMode(AppThemeMode.FollowSystem);
+        private void MenuThemeLight_Click(object sender, RoutedEventArgs e) => SetThemeMode(AppThemeMode.Light);
+        private void MenuThemeDark_Click(object sender, RoutedEventArgs e) => SetThemeMode(AppThemeMode.Dark);
 
         private void MenuLeftMove_Click(object sender, RoutedEventArgs e)
         {
@@ -1116,6 +1125,79 @@ namespace NetBar
             CloseContextMenuDelayed();
         }
 
+        private void AutoUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                bool isChecked = false;
+                if (sender is System.Windows.Controls.MenuItem mi)
+                {
+                    isChecked = mi.IsChecked;
+                }
+                else if (_miAutoUpdate != null)
+                {
+                    _miAutoUpdate.IsChecked = !_miAutoUpdate.IsChecked;
+                    isChecked = _miAutoUpdate.IsChecked;
+                }
+
+                _settings.AutoUpdate = isChecked;
+                SaveSettings();
+            }
+            catch { }
+            CloseContextMenuDelayed();
+        }
+
+        private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            CloseContextMenuDelayed();
+            await CheckForUpdatesAsync(silent: false);
+        }
+
+        private async Task CheckForUpdatesAsync(bool silent)
+        {
+            try
+            {
+                var currentVersion = UpdateService.GetCurrentVersion();
+                var update = await UpdateService.CheckForUpdateAsync(currentVersion);
+                if (update == null)
+                {
+                    if (!silent)
+                    {
+                        System.Windows.MessageBox.Show(this, $"当前版本 {currentVersion} 已是最新版本。", "NetBar 更新", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    return;
+                }
+
+                bool shouldInstall = silent && _settings.AutoUpdate;
+                if (!silent)
+                {
+                    var result = System.Windows.MessageBox.Show(
+                        this,
+                        $"发现新版本 {update.TagName}，当前版本 {currentVersion}。\n\n是否立即下载并安装？",
+                        "NetBar 更新",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Information);
+                    shouldInstall = result == MessageBoxResult.Yes;
+                }
+
+                if (!shouldInstall)
+                {
+                    return;
+                }
+
+                await UpdateService.DownloadAndInstallAsync(update);
+                System.Windows.Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"Update check failed: {ex.GetType().Name} {ex.Message}");
+                if (!silent)
+                {
+                    System.Windows.MessageBox.Show(this, $"检查更新失败：{ex.Message}", "NetBar 更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+        }
+
         private void Exit_Click(object sender, RoutedEventArgs? e)
         {
             System.Windows.Application.Current.Shutdown();
@@ -1130,8 +1212,9 @@ namespace NetBar
                 _settings.SavedLeft = null;
                 // 取消开机自启
                 TryApplyAutoStart(false);
+                _settings.AutoUpdate = true;
                 // 恢复主题为跟随系统（SetThemeMode 会保存设置并更新监控）
-                SetThemeMode(ThemeMode.FollowSystem);
+                SetThemeMode(AppThemeMode.FollowSystem);
                 // 持久化剩余设置
                 SaveSettings();
 
@@ -1159,7 +1242,7 @@ namespace NetBar
                 {
                     try { await Task.Delay(ms); }
                     catch { }
-                    try { this.Dispatcher.BeginInvoke(new Action(() => { cm.IsOpen = false; })); }
+                    try { _ = this.Dispatcher.BeginInvoke(new Action(() => { cm.IsOpen = false; })); }
                     catch { }
                 });
             }

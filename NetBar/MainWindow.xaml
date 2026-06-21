@@ -34,6 +34,8 @@
                     <MenuItem Header="深色" IsCheckable="True" Click="MenuThemeDark_Click" StaysOpenOnClick="True" x:Name="MenuThemeDark" />
                 </MenuItem>
                 <MenuItem Header="左键移动窗口" IsCheckable="True" Click="MenuLeftMove_Click" StaysOpenOnClick="True" x:Name="MenuLeftMove" />
+                <MenuItem Header="自动更新" IsCheckable="True" Click="AutoUpdate_Click" StaysOpenOnClick="True" x:Name="MenuAutoUpdate"/>
+                <MenuItem Header="检查更新" Click="CheckUpdate_Click" />
                 <MenuItem Header="重置设置" Click="Reset_Click" />
                 <Separator/>
                 <MenuItem Header="退出" Click="Exit_Click"/>
