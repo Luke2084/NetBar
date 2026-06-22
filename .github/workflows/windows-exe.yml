@@ -42,7 +42,11 @@ jobs:
         run: dotnet build $env:PROJECT_PATH --configuration Release --no-restore
 
       - name: Publish self-contained EXE
+<<<<<<< HEAD
         run: dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained true
+=======
+        run: dotnet publish $env:PROJECT_PATH --configuration Release --publish-profile win-x64
+>>>>>>> f4bfd1430f5964d04eafb819106b99b798ff2eb7
 
       - name: Package artifact
         shell: pwsh
@@ -51,6 +55,7 @@ jobs:
           if (Test-Path $zip) {
             Remove-Item $zip
           }
+<<<<<<< HEAD
           # Prefer explicit publish path; if it doesn't exist, try to locate the publish folder produced by dotnet publish
           if (Test-Path $env:PUBLISH_DIR) {
             Compress-Archive -Path "$($env:PUBLISH_DIR)\*" -DestinationPath $zip -Force
@@ -63,6 +68,9 @@ jobs:
               exit 1
             }
           }
+=======
+          Compress-Archive -Path "$env:PUBLISH_DIR/*" -DestinationPath $zip
+>>>>>>> f4bfd1430f5964d04eafb819106b99b798ff2eb7
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
