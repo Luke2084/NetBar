@@ -19,7 +19,7 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   PROJECT_PATH: NetBar/NetBar.csproj
-  PUBLISH_DIR: NetBar/bin/Release/net9.0-windows/win-x64/publish
+  PUBLISH_DIR: NetBar/bin/Release/net10.0-windows/win-x64/publish
   ARTIFACT_NAME: NetBar-win-x64
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore dependencies
         run: dotnet restore $env:PROJECT_PATH
