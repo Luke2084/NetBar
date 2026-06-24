@@ -42,8 +42,8 @@ jobs:
       - name: Build
         run: dotnet build $env:PROJECT_PATH --configuration Release --no-restore
 
-      - name: Publish self-contained EXE
-        run: dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained true
+      - name: Publish EXE
+        run: dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained false
 
       - name: Package artifact
         shell: pwsh
