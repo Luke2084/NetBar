@@ -34,7 +34,19 @@ namespace NetBar
 
         public static string? GetExecutablePath()
         {
-            return Process.GetCurrentProcess().MainModule?.FileName;
+            try
+            {
+                var path = Process.GetCurrentProcess().MainModule?.FileName;
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    return path;
+                }
+            }
+            catch
+            {
+                // MainModule may throw on certain systems
+            }
+            return AppContext.BaseDirectory.TrimEnd('\\', '/') + "\\NetBar.exe";
         }
 
         public static async Task<UpdateInfo?> CheckForUpdateAsync(Version currentVersion, CancellationToken cancellationToken = default)
@@ -147,15 +159,41 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$Script:Success = $false
 
 try {
-    Wait-Process -Id $ProcessId -Timeout 30 -ErrorAction SilentlyContinue
+    # Wait for the old process to exit
+    $proc = $null
+    try {
+        $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+        if ($proc) {
+            $proc.WaitForExit(15000)
+        }
+    } catch {
+        # Process already exited or access denied — continue anyway
+    }
+
+    # Extra delay to let handle release
+    Start-Sleep -Milliseconds 800
+
+    # Clean target directory first to avoid stale files
+    if (Test-Path $TargetDir) {
+        Remove-Item -Path (Join-Path $TargetDir '*') -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Create target directory
+    New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+
+    # Copy new files
+    Copy-Item -Path (Join-Path $SourceDir '*') -Destination $TargetDir -Recurse -Force
+    $Script:Success = $true
 } catch {
+    Write-Error "Update failed: $($_.Exception.Message)"
+    exit 1
 }
 
-Start-Sleep -Milliseconds 500
-Copy-Item -Path (Join-Path $SourceDir '*') -Destination $TargetDir -Recurse -Force
-Start-Process -FilePath $ExePath -WorkingDirectory $TargetDir
+# Exit code: 0 = success, non-zero = failure
+exit [int](-not $Script:Success)
 """);
             return script;
         }
@@ -166,7 +204,8 @@ Start-Process -FilePath $ExePath -WorkingDirectory $TargetDir
             {
                 FileName = "powershell.exe",
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                RedirectStandardError = true
             };
 
             startInfo.ArgumentList.Add("-NoProfile");
@@ -183,7 +222,14 @@ Start-Process -FilePath $ExePath -WorkingDirectory $TargetDir
             startInfo.ArgumentList.Add("-ExePath");
             startInfo.ArgumentList.Add(exePath);
 
-            Process.Start(startInfo);
+            try
+            {
+                Process.Start(startInfo);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to start updater: {ex.Message}");
+            }
         }
     }
 }

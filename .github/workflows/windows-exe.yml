@@ -13,12 +13,13 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   PROJECT_PATH: NetBar/NetBar.csproj
-  PUBLISH_DIR: NetBar/bin/Release/net10.0-windows/win-x64/publish
+  PUBLISH_DIR: NetBar/bin/Release/net9.0-windows/win-x64/publish
   ARTIFACT_NAME: NetBar-win-x64
 
 jobs:
@@ -33,30 +34,26 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 9.0.x
 
-      - name: Restore
+      - name: Restore dependencies
         run: dotnet restore $env:PROJECT_PATH
 
       - name: Build
         run: dotnet build $env:PROJECT_PATH --configuration Release --no-restore
 
       - name: Publish self-contained EXE
-<<<<<<< HEAD
-        run: dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained true
-=======
-        run: dotnet publish $env:PROJECT_PATH --configuration Release --publish-profile win-x64
->>>>>>> f4bfd1430f5964d04eafb819106b99b798ff2eb7
+        run: dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained true --no-build
 
       - name: Package artifact
         shell: pwsh
         run: |
           $zip = "$env:ARTIFACT_NAME.zip"
           if (Test-Path $zip) {
-            Remove-Item $zip
+            Remove-Item $zip -Force
           }
-<<<<<<< HEAD
-          # Prefer explicit publish path; if it doesn't exist, try to locate the publish folder produced by dotnet publish
+
+          # Prefer explicit publish path; fallback to finding the publish folder
           if (Test-Path $env:PUBLISH_DIR) {
             Compress-Archive -Path "$($env:PUBLISH_DIR)\*" -DestinationPath $zip -Force
           } else {
@@ -68,18 +65,17 @@ jobs:
               exit 1
             }
           }
-=======
-          Compress-Archive -Path "$env:PUBLISH_DIR/*" -DestinationPath $zip
->>>>>>> f4bfd1430f5964d04eafb819106b99b798ff2eb7
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ARTIFACT_NAME }}.zip
+          if-no-files-found: error
 
       - name: Attach artifact to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ARTIFACT_NAME }}.zip
+          generate_release_notes: true

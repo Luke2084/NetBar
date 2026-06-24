@@ -1,4 +1,4 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -348,11 +348,6 @@ namespace NetBar
                 }
                 if (best != null)
                 {
-                    try
-                    {
-                        var s = best.GetIPv4Statistics();
-                    }
-                    catch { }
                     return best;
                 }
                 // 回退到任意一个可用接口
@@ -588,11 +583,8 @@ namespace NetBar
 
         private void PositionWindowAtTaskbarSide(bool force = false)
         {
-            // EMERGENCY: 临时完全禁用自动/强制定位以阻止窗口被移出可见区域
-            LogDebug("PositionWindowAtTaskbarSide disabled by emergency stop");
-#pragma warning disable CS0162 // Keep legacy positioning code available while the emergency stop is active.
-            return;
-
+            try
+            {
                 if (!_autoPositionEnabled && !force)
                 {
                     LogDebug("PositionWindowAtTaskbarSide skipped because autoPosition disabled");
@@ -733,7 +725,6 @@ namespace NetBar
                     catch { }
                     LogDebug($"PositionWindowAtTaskbarSide applied: Left={this.Left:F0} Top={this.Top:F0} Width={this.Width:F0} Height={this.Height:F0}");
                 }));
-#pragma warning restore CS0162
         }
 
         private bool TryGetTrayNotifyRect(out RECT rect)

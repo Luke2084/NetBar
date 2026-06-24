@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# NetBar specific
+NetBar/bin/
+NetBar/obj/
+NetBar.slnx
