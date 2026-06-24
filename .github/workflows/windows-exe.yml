@@ -55,11 +55,11 @@ jobs:
 
           # Prefer explicit publish path; fallback to finding the publish folder
           if (Test-Path $env:PUBLISH_DIR) {
-            Compress-Archive -Path "$($env:PUBLISH_DIR)\*" -DestinationPath $zip -Force
+            Compress-Archive -Path $env:PUBLISH_DIR -DestinationPath $zip -Force -CompressionLevel Fastest
           } else {
             $publish = Get-ChildItem -Path (Join-Path $PWD $env:PROJECT_PATH | Split-Path -Parent) -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'publish' } | Select-Object -First 1
             if ($publish) {
-              Compress-Archive -Path "$($publish.FullName)\*" -DestinationPath $zip -Force
+            Compress-Archive -Path $publish.FullName -DestinationPath $zip -Force -CompressionLevel Fastest
             } else {
               Write-Error "Publish directory not found. Ensure dotnet publish succeeded."
               exit 1
