@@ -725,6 +725,11 @@ namespace NetBar
                     catch { }
                     LogDebug($"PositionWindowAtTaskbarSide applied: Left={this.Left:F0} Top={this.Top:F0} Width={this.Width:F0} Height={this.Height:F0}");
                 }));
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"PositionWindowAtTaskbarSide error: {ex.Message}");
+            }
         }
 
         private bool TryGetTrayNotifyRect(out RECT rect)
