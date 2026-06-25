@@ -669,8 +669,8 @@ namespace NetBar
                     _lastPositionTime = DateTime.UtcNow;
                 }
                 LogDebug("PositionWindowAtTaskbarSide start");
-                // 如果当前前台窗口是任务栏或其子窗口，跳过定位以避免与托盘交互冲突
-                try
+                // 如果当前前台窗口是任务栏或其子窗口，跳过定位以避免与托盘交互冲突（force 时不跳过）
+                if (!force)
                 {
                     IntPtr fg = GetForegroundWindow();
                     IntPtr shellTray = FindWindow("Shell_TrayWnd", null);
@@ -680,12 +680,10 @@ namespace NetBar
                         try { isChildOfTray = IsChild(shellTray, fg); } catch { }
                         if (fg == shellTray || isChildOfTray)
                         {
-                            LogDebug("PositionWindowAtTaskbarSide skipped because foreground is taskbar/tray");
                             return;
                         }
                     }
                 }
-                catch { }
                 // Get taskbar position
                 APPBARDATA data = new APPBARDATA();
                 data.cbSize = Marshal.SizeOf(typeof(APPBARDATA));
@@ -1275,6 +1273,8 @@ namespace NetBar
                 // 重置为默认设置
                 _settings.LeftDragMove = true;
                 _settings.SavedLeft = null;
+                // 重置初始定位标记，让窗口重新计算位置
+                _initialPositioned = false;
                 // 取消开机自启
                 TryApplyAutoStart(false);
                 _settings.AutoUpdate = true;
