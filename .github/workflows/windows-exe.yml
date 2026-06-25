@@ -19,6 +19,7 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   PROJECT_PATH: NetBar/NetBar.csproj
+  PUBLISH_DIR: NetBar/bin/Release/net10.0-windows/win-x64/publish
   ARTIFACT_NAME: NetBar-win-x64
 
 jobs:
@@ -33,9 +34,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            8.0.x
-            9.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore dependencies
         run: dotnet restore $env:PROJECT_PATH
@@ -44,18 +43,7 @@ jobs:
         run: dotnet build $env:PROJECT_PATH --configuration Release --no-restore
 
       - name: Publish EXE
-        id: publish
-        run: |
-          dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained false -o publish_output
-          # Output the resolved path for downstream steps
-          $publishOutput = Join-Path $PWD "publish_output"
-          echo "publish_dir=$publishOutput" >> $env:GITHUB_OUTPUT
-          Write-Host "Published to: $publishOutput"
-          if (-not (Test-Path $publishOutput)) {
-            Write-Error "Publish output directory not found"
-            exit 1
-          }
-          Get-ChildItem -Path $publishOutput -File | ForEach-Object { Write-Host "  - $($_.Name)" }
+        run: dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained false
 
       - name: Package artifact
         shell: pwsh
@@ -65,12 +53,21 @@ jobs:
             Remove-Item $zip -Force
           }
 
-          # Use the publish_dir output from the publish step
-          $publishDir = "${{ steps.publish.outputs.publish_dir }}"
-          Write-Host "Using publish dir: $publishDir"
+          # Find the publish directory: first check the known path, then fall back to searching
+          $publishDir = $null
+          if (Test-Path $env:PUBLISH_DIR) {
+            $publishDir = $env:PUBLISH_DIR
+          } else {
+            # Search recursively for the publish folder
+            $publishDir = (Get-ChildItem -Path $PWD -Recurse -Directory -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -eq 'publish' } |
+              Select-Object -First 1).FullName
+          }
 
-          if (-not (Test-Path $publishDir)) {
-            Write-Error "Publish directory not found: $publishDir"
+          Write-Host "Resolved publish dir: $publishDir"
+
+          if (-not $publishDir -or -not (Test-Path $publishDir)) {
+            Write-Error "Publish directory not found"
             exit 1
           }
 
