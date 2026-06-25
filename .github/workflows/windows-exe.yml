@@ -53,16 +53,13 @@ jobs:
             Remove-Item $zip -Force
           }
 
-          $publishDir = if (Test-Path $env:PUBLISH_DIR) {
-            $env:PUBLISH_DIR
-          } else {
-            $publish = Get-ChildItem -Path (Join-Path $PWD $env:PROJECT_PATH | Split-Path -Parent) -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'publish' } | Select-Object -First 1
-            if ($publish) {
-              $publish.FullName
-            } else {
-              Write-Error "Publish directory not found. Ensure dotnet publish succeeded."
-              exit 1
-            }
+          # Resolve the publish directory relative to the repo root
+          $repoRoot = $PWD
+          $publishDir = Join-Path $repoRoot $env:PUBLISH_DIR
+
+          if (-not (Test-Path $publishDir)) {
+            Write-Error "Publish directory not found: $publishDir"
+            exit 1
           }
 
           # Create a temp folder named NetBar, copy files into it, then zip the folder
@@ -71,10 +68,9 @@ jobs:
             Remove-Item $tempFolder -Recurse -Force
           }
           New-Item -ItemType Directory -Path $tempFolder | Out-Null
-          Get-ChildItem -Path $publishDir -File | Copy-Item -Destination $tempFolder
-          Get-ChildItem -Path $publishDir -Directory -Recurse | Copy-Item -Recurse -Destination $tempFolder -Force
+          Copy-Item -Path (Join-Path $publishDir -ChildPath '*') -Destination $tempFolder -Recurse -Force
 
-          Compress-Archive -Path "$tempFolder/*" -DestinationPath $zip -Force -CompressionLevel Fastest
+          Compress-Archive -Path (Join-Path $tempFolder -ChildPath '*') -DestinationPath $zip -Force -CompressionLevel Fastest
           Remove-Item $tempFolder -Recurse -Force
 
       - name: Upload artifact
