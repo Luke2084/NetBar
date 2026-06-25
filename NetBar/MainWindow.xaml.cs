@@ -122,9 +122,11 @@ namespace NetBar
         }
 
         // 控制是否启用定期/显式置顶（用于调试/回退）
-        private bool _topmostEnabled = false; // 目前禁用以避免与任务栏交互冲突
+        private bool _topmostEnabled = true;
         // 控制是否允许自动定位到任务栏附近，默认关闭以避免与系统托盘冲突
-        private bool _autoPositionEnabled = false;
+        private bool _autoPositionEnabled = true;
+        // 跟踪前台是否全屏
+        private bool _isFullScreen = false;
         private readonly object _positionLock = new object();
         private DateTime _lastPositionTime = DateTime.MinValue;
         // Deactivated 延迟任务控制
@@ -291,7 +293,7 @@ namespace NetBar
             SyncLeftMoveCheck();
             // 初始定位到工作区右下角（避免与任务栏/托盘交互）
             SetInitialPositionInWorkArea();
-            try { this.Topmost = true; _topmostEnabled = false; } catch { }
+            try { this.Topmost = true; } catch { }
             // 处理 Loaded 后可能的窗口激活问题
             _ = this.Dispatcher.BeginInvoke(new Action(() => this.Activate()));
             if (_settings.AutoUpdate)
@@ -397,8 +399,28 @@ namespace NetBar
                             // 更新 UI
                             _ = this.Dispatcher.BeginInvoke(new Action(() =>
                             {
-                                DownloadText.Text = $"↓ {FormatSpeed(downloadSpeed)}";
-                                UploadText.Text = $"↑ {FormatSpeed(uploadSpeed)}";
+                                // 检查前台是否全屏
+                                CheckFullscreen();
+
+                                // 全屏时隐藏网速显示
+                                if (_isFullScreen)
+                                {
+                                    DownloadText.Text = "";
+                                    UploadText.Text = "";
+                                }
+                                else
+                                {
+                                    DownloadText.Text = $"↓ {FormatSpeed(downloadSpeed)}";
+                                    UploadText.Text = $"↑ {FormatSpeed(uploadSpeed)}";
+                                }
+
+                                // 每500ms检查一次任务栏/全屏状态
+                                if ((DateTime.UtcNow - _lastPositionTime).TotalMilliseconds > 500)
+                                {
+                                    _lastPositionTime = DateTime.UtcNow;
+                                    PositionWindowAtTaskbarSide();
+                                    EnsureWindowTopmost();
+                                }
                             }));
 
                             lastDownloadBytes = downloadBytes;
@@ -456,27 +478,76 @@ namespace NetBar
             if (_miThemeDark != null) _miThemeDark.IsChecked = _themeMode == AppThemeMode.Dark;
         }
 
-        private void EnsureWindowTopmost()
+        // 检测当前前台窗口是否全屏（排除自身）
+        private void CheckFullscreen()
         {
             try
             {
-                if (!_topmostEnabled)
-                {
-                    LogDebug("EnsureWindowTopmost skipped (disabled)");
-                    return;
-                }
+                IntPtr fg = GetForegroundWindow();
+                if (fg == IntPtr.Zero) { _isFullScreen = false; return; }
+                var me = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (fg == me) { _isFullScreen = false; return; }
 
-                // 保持 WPF Topmost 与原生 topmost 一致，避免 z-order 不一致导致被覆盖
-                this.Topmost = true;
-                var helper = new System.Windows.Interop.WindowInteropHelper(this);
-                IntPtr h = helper.Handle;
-                if (h != IntPtr.Zero)
+                // 通过 WPF WindowState 检测
+                var topWin = System.Windows.Application.Current.Windows
+                    .OfType<System.Windows.Window>()
+                    .FirstOrDefault(w => new System.Windows.Interop.WindowInteropHelper(w).Handle == fg);
+                if (topWin != null && topWin.WindowState == System.Windows.WindowState.Maximized)
                 {
-                    SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    if (!topWin.ResizeMode.HasFlag(System.Windows.ResizeMode.CanResize))
+                    {
+                        _isFullScreen = true;
+                        return;
+                    }
                 }
-                LogDebug($"EnsureWindowTopmost called: Visible={this.Visibility} Topmost={this.Topmost} Left={this.Left:F0} Top={this.Top:F0}");
+                _isFullScreen = false;
             }
-            catch { }
+            catch { _isFullScreen = false; }
+        }
+
+        private void EnsureWindowTopmost()
+        {
+            if (!_topmostEnabled) return;
+
+            // 全屏时隐藏窗口
+            if (_isFullScreen)
+            {
+                if (this.Visibility == System.Windows.Visibility.Visible)
+                {
+                    this.Visibility = System.Windows.Visibility.Collapsed;
+                }
+                return;
+            }
+
+            // 非全屏时检查任务栏是否自动隐藏
+            APPBARDATA abd = new APPBARDATA();
+            abd.cbSize = Marshal.SizeOf(typeof(APPBARDATA));
+            IntPtr stateResult = SHAppBarMessage(ABM_GETSTATE, ref abd);
+            bool taskbarAutoHide = (stateResult.ToInt64() & ABS_AUTOHIDE) != 0;
+
+            if (taskbarAutoHide)
+            {
+                // 任务栏自动隐藏时：窗口置顶显示
+                this.Topmost = true;
+            }
+            else
+            {
+                // 任务栏不自动隐藏时：窗口置顶（始终在任务栏上方）
+                this.Topmost = true;
+            }
+
+            // 确保窗口可见
+            if (this.Visibility != System.Windows.Visibility.Visible)
+            {
+                this.Visibility = System.Windows.Visibility.Visible;
+            }
+
+            var helper = new System.Windows.Interop.WindowInteropHelper(this);
+            IntPtr h = helper.Handle;
+            if (h != IntPtr.Zero)
+            {
+                SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
         }
 
         private void MainWindow_Activated(object? sender, EventArgs e)
