@@ -37,7 +37,7 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore dependencies
-        run: dotnet restore $env:PROJECT_PATH
+        run: dotnet restore $env:PROJECT_PATH -r win-x64
 
       - name: Build
         run: dotnet build $env:PROJECT_PATH --configuration Release --no-restore
@@ -53,21 +53,17 @@ jobs:
             Remove-Item $zip -Force
           }
 
-          # Find the publish directory: first check the known path, then fall back to searching
-          $publishDir = $null
-          if (Test-Path $env:PUBLISH_DIR) {
-            $publishDir = $env:PUBLISH_DIR
-          } else {
-            # Search recursively for the publish folder
-            $publishDir = (Get-ChildItem -Path $PWD -Recurse -Directory -ErrorAction SilentlyContinue |
-              Where-Object { $_.Name -eq 'publish' } |
-              Select-Object -First 1).FullName
-          }
+          # Find the publish directory: always search recursively to avoid path resolution issues
+          $publishDir = (Get-ChildItem -Path $PWD -Recurse -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -eq 'publish' } |
+            Select-Object -First 1).FullName
 
           Write-Host "Resolved publish dir: $publishDir"
 
           if (-not $publishDir -or -not (Test-Path $publishDir)) {
             Write-Error "Publish directory not found"
+            Write-Host "All directories under $PWD:"
+            Get-ChildItem -Path $PWD -Recurse -Directory -Name 2>&1 | Write-Host
             exit 1
           }
 
