@@ -53,10 +53,8 @@ jobs:
             Remove-Item $zip -Force
           }
 
-          # Resolve the publish directory relative to the repo root
-          $repoRoot = $PWD
-          $publishDir = Join-Path $repoRoot $env:PUBLISH_DIR
-
+          # Find the actual publish directory
+          $publishDir = Join-Path $PWD "NetBar/bin/Release/net10.0-windows/win-x64/publish"
           if (-not (Test-Path $publishDir)) {
             Write-Error "Publish directory not found: $publishDir"
             exit 1
@@ -68,7 +66,7 @@ jobs:
             Remove-Item $tempFolder -Recurse -Force
           }
           New-Item -ItemType Directory -Path $tempFolder | Out-Null
-          Copy-Item -Path (Join-Path $publishDir -ChildPath '*') -Destination $tempFolder -Recurse -Force
+          Get-ChildItem -Path $publishDir | Copy-Item -Destination $tempFolder -Recurse -Force
 
           Compress-Archive -Path (Join-Path $tempFolder -ChildPath '*') -DestinationPath $zip -Force -CompressionLevel Fastest
           Remove-Item $tempFolder -Recurse -Force
