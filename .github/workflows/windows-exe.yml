@@ -56,13 +56,21 @@ jobs:
             Remove-Item $zip -Force
           }
 
-          # Publish dir is relative to the repo root (which is $PWD in GitHub Actions)
-          $publishDir = Join-Path $PWD $env:PUBLISH_DIR
-          Write-Host "Resolved publish dir: $publishDir"
-          if (-not (Test-Path $publishDir)) {
-            Write-Error "Publish directory not found: $publishDir"
+          # Find the publish directory by searching for 'publish' folder under NetBar/bin/Release
+          # The project is at NetBar/NetBar.csproj, publish output is at NetBar/bin/Release/<tfm>/win-x64/publish
+          $publishDir = Get-ChildItem -Path $PWD -Recurse -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -eq 'publish' -and $_.Parent.Parent.Parent.Name -eq 'NetBar' } |
+            Select-Object -First 1
+          
+          if (-not $publishDir) {
+            Write-Error "Publish directory not found under $PWD"
+            Write-Host "Searching for publish directories:"
+            Get-ChildItem -Path $PWD -Recurse -Directory -Name 2>&1 | Write-Host
             exit 1
           }
+          
+          $publishDir = $publishDir.FullName
+          Write-Host "Resolved publish dir: $publishDir"
 
           # Create a temp folder named NetBar, copy files into it, then zip the folder
           $tempFolder = Join-Path $PWD "NetBar"
