@@ -56,15 +56,8 @@ jobs:
             Remove-Item $zip -Force
           }
 
-          # Get publish dir from the publish step's output
-          Write-Host "PWD: $PWD"
-          Write-Host "PUBLISH_DIR: $env:PUBLISH_DIR"
-          $publishDir = if (Test-Path $env:PUBLISH_DIR) {
-            $env:PUBLISH_DIR
-          } else {
-            # Fallback: try the path relative to the solution directory
-            Join-Path $PWD $env:PUBLISH_DIR
-          }
+          # Publish dir is relative to the repo root (which is $PWD in GitHub Actions)
+          $publishDir = Join-Path $PWD $env:PUBLISH_DIR
           Write-Host "Resolved publish dir: $publishDir"
           if (-not (Test-Path $publishDir)) {
             Write-Error "Publish directory not found: $publishDir"
