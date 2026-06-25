@@ -53,8 +53,13 @@ jobs:
             Remove-Item $zip -Force
           }
 
+          # Debug: show what pwsh sees as working directory
+          Write-Host "pwsh pwd: $PWD"
+          Write-Host "session state pwd: $(pwd)"
+          Write-Host "pwd command: $(Get-Location)"
+
           # Find the publish directory: always search recursively to avoid path resolution issues
-          $publishDir = (Get-ChildItem -Path $PWD -Recurse -Directory -ErrorAction SilentlyContinue |
+          $publishDir = (Get-ChildItem -Path (Get-Location) -Recurse -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -eq 'publish' } |
             Select-Object -First 1).FullName
 
@@ -62,8 +67,11 @@ jobs:
 
           if (-not $publishDir -or -not (Test-Path $publishDir)) {
             Write-Error "Publish directory not found"
-            Write-Host "All directories under $PWD:"
+            Write-Host "All directories under ${PWD}:"
             Get-ChildItem -Path $PWD -Recurse -Directory -Name 2>&1 | Write-Host
+            # Also show any bin or obj directories
+            Write-Host "Searching for bin/obj dirs:"
+            Get-ChildItem -Path $PWD -Recurse -Directory -Name -Include bin,obj -ErrorAction SilentlyContinue | Write-Host
             exit 1
           }
 
