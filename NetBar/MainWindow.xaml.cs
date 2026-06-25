@@ -46,6 +46,8 @@ namespace NetBar
         private AppSettings _settings = new AppSettings();
         private string _configPath = string.Empty;
         private bool _initialPositioned = false;
+        private double _defaultLeft = 0;
+        private double _defaultTop = 0;
 
         private class AppSettings
         {
@@ -54,6 +56,7 @@ namespace NetBar
             public string ThemeMode { get; set; } = "FollowSystem"; // FollowSystem | Light | Dark
             public bool LeftDragMove { get; set; } = true; // 是否允许左键拖动窗口
             public double? SavedLeft { get; set; } = null; // 记录上次水平位置
+            public double? SavedTop { get; set; } = null; // 记录上次垂直位置
         }
 
         // 将窗口放在任务栏右侧，与托盘图标同行
@@ -87,7 +90,7 @@ namespace NetBar
 
                             if (edge == 3) // bottom
                             {
-                                // 任务栏在底部：窗口放在任务栏右侧
+                                // 任务栏在底部：窗口放在任务栏右侧，与任务栏同行
                                 this.Left = rc.right - w;
                                 this.Top = rc.top;
                             }
@@ -109,6 +112,17 @@ namespace NetBar
                                 this.Left = rc.left - w;
                                 this.Top = rc.bottom - h;
                             }
+                        }
+
+                        // 计算后保存为默认位置
+                        _defaultLeft = this.Left;
+                        _defaultTop = this.Top;
+
+                        // 如果有用户拖动过的位置，恢复
+                        if (_settings.SavedLeft.HasValue)
+                        {
+                            this.Left = _settings.SavedLeft.Value;
+                            this.Top = _settings.SavedTop.HasValue ? _settings.SavedTop.Value : this.Top;
                         }
 
                         _initialPositioned = true;
@@ -630,6 +644,9 @@ namespace NetBar
 
         private void MainWindow_Closed(object? sender, EventArgs e)
         {
+            // 保存当前窗口位置
+            _settings.SavedLeft = this.Left;
+            _settings.SavedTop = this.Top;
             StopMonitoring();
             // 使用 NetworkInterface 无需手动释放计数器
             TearDownThemeMonitoring();
@@ -1273,6 +1290,7 @@ namespace NetBar
                 // 重置为默认设置
                 _settings.LeftDragMove = true;
                 _settings.SavedLeft = null;
+                _settings.SavedTop = null;
                 // 重置初始定位标记，让窗口重新计算位置
                 _initialPositioned = false;
                 // 取消开机自启
