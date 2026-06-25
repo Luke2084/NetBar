@@ -43,7 +43,10 @@ jobs:
         run: dotnet build $env:PROJECT_PATH --configuration Release --no-restore
 
       - name: Publish EXE
-        run: dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained false
+        run: |
+          dotnet publish $env:PROJECT_PATH --configuration Release -r win-x64 --self-contained false
+          # Record the actual working directory
+          echo "PWD=$PWD" >> $env:GITHUB_ENV
 
       - name: Package artifact
         shell: pwsh
@@ -53,8 +56,16 @@ jobs:
             Remove-Item $zip -Force
           }
 
-          # Find the actual publish directory
-          $publishDir = Join-Path $PWD "NetBar/bin/Release/net10.0-windows/win-x64/publish"
+          # Get publish dir from the publish step's output
+          Write-Host "PWD: $PWD"
+          Write-Host "PUBLISH_DIR: $env:PUBLISH_DIR"
+          $publishDir = if (Test-Path $env:PUBLISH_DIR) {
+            $env:PUBLISH_DIR
+          } else {
+            # Fallback: try the path relative to the solution directory
+            Join-Path $PWD $env:PUBLISH_DIR
+          }
+          Write-Host "Resolved publish dir: $publishDir"
           if (-not (Test-Path $publishDir)) {
             Write-Error "Publish directory not found: $publishDir"
             exit 1
