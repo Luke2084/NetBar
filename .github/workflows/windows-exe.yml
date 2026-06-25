@@ -71,7 +71,8 @@ jobs:
             Remove-Item $tempFolder -Recurse -Force
           }
           New-Item -ItemType Directory -Path $tempFolder | Out-Null
-          Copy-Item -Path (Join-Path $publishDir '*') -Destination $tempFolder -Recurse -Force
+          Get-ChildItem -Path $publishDir -File | Copy-Item -Destination $tempFolder
+          Get-ChildItem -Path $publishDir -Directory -Recurse | Copy-Item -Recurse -Destination $tempFolder -Force
 
           Compress-Archive -Path "$tempFolder/*" -DestinationPath $zip -Force -CompressionLevel Fastest
           Remove-Item $tempFolder -Recurse -Force
