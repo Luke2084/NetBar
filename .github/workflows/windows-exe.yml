@@ -53,18 +53,28 @@ jobs:
             Remove-Item $zip -Force
           }
 
-          # Prefer explicit publish path; fallback to finding the publish folder
-          if (Test-Path $env:PUBLISH_DIR) {
-            Compress-Archive -Path $env:PUBLISH_DIR -DestinationPath $zip -Force -CompressionLevel Fastest
+          $publishDir = if (Test-Path $env:PUBLISH_DIR) {
+            $env:PUBLISH_DIR
           } else {
             $publish = Get-ChildItem -Path (Join-Path $PWD $env:PROJECT_PATH | Split-Path -Parent) -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'publish' } | Select-Object -First 1
             if ($publish) {
-            Compress-Archive -Path $publish.FullName -DestinationPath $zip -Force -CompressionLevel Fastest
+              $publish.FullName
             } else {
               Write-Error "Publish directory not found. Ensure dotnet publish succeeded."
               exit 1
             }
           }
+
+          # Create a temp folder named NetBar, copy files into it, then zip the folder
+          $tempFolder = Join-Path $PWD "NetBar"
+          if (Test-Path $tempFolder) {
+            Remove-Item $tempFolder -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $tempFolder | Out-Null
+          Copy-Item -Path (Join-Path $publishDir '*') -Destination $tempFolder -Recurse -Force
+
+          Compress-Archive -Path "$tempFolder/*" -DestinationPath $zip -Force -CompressionLevel Fastest
+          Remove-Item $tempFolder -Recurse -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
