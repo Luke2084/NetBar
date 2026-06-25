@@ -56,12 +56,11 @@ namespace NetBar
             public double? SavedLeft { get; set; } = null; // 记录上次水平位置
         }
 
-        // 将窗口放在工作区右下角的安全初始位置
+        // 将窗口放在任务栏右侧，与托盘图标同行
         private void SetInitialPositionInWorkArea()
         {
             try
             {
-                // 延迟到布局完成后使用 ActualWidth/ActualHeight 进行一次性定位，避免尺寸变动导致放到屏幕外
                 if (_initialPositioned) return;
                 this.Dispatcher.BeginInvoke(new Action(() =>
                 {
@@ -70,50 +69,49 @@ namespace NetBar
                         double w = this.ActualWidth > 0 ? this.ActualWidth : this.Width;
                         double h = this.ActualHeight > 0 ? this.ActualHeight : this.Height;
 
-                        // 首先尝试基于任务栏所在显示器的工作区定位
-                        Rect waRect = SystemParameters.WorkArea;
-                        try
-                        {
-                            IntPtr shell = FindWindow("Shell_TrayWnd", null);
-                            IntPtr mon = IntPtr.Zero;
-                            if (shell != IntPtr.Zero)
-                                mon = MonitorFromWindow(shell, 2);
-                            if (mon == IntPtr.Zero)
-                            {
-                                var helper = new WindowInteropHelper(this);
-                                if (helper.Handle != IntPtr.Zero)
-                                    mon = MonitorFromWindow(helper.Handle, 2);
-                            }
+                        // 获取任务栏位置和边缘方向
+                        APPBARDATA abd = new APPBARDATA();
+                        abd.cbSize = Marshal.SizeOf(typeof(APPBARDATA));
+                        IntPtr result = SHAppBarMessage(ABM_GETTASKBARPOS, ref abd);
 
-                            if (mon != IntPtr.Zero)
+                        if (result == IntPtr.Zero)
+                        {
+                            // 回退：放在屏幕右下角
+                            this.Left = SystemParameters.WorkArea.Right - w - 8;
+                            this.Top = SystemParameters.WorkArea.Bottom - h - 8;
+                        }
+                        else
+                        {
+                            var rc = abd.rc;
+                            uint edge = abd.uEdge;
+
+                            if (edge == 3) // bottom
                             {
-                                MONITORINFO mi = new MONITORINFO();
-                                mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
-                                if (GetMonitorInfo(mon, ref mi))
-                                {
-                                    // mi.rcWork 是像素坐标，需转换为 WPF 设备无关单位
-                                    var src = PresentationSource.FromVisual(this);
-                                    if (src != null)
-                                    {
-                                        var m = src.CompositionTarget.TransformFromDevice;
-                                        var tl = m.Transform(new System.Windows.Point(mi.rcWork.left, mi.rcWork.top));
-                                        var br = m.Transform(new System.Windows.Point(mi.rcWork.right, mi.rcWork.bottom));
-                                        waRect = new Rect(tl, br);
-                                    }
-                                }
+                                // 任务栏在底部：窗口放在任务栏右侧
+                                this.Left = rc.right - w;
+                                this.Top = rc.top;
+                            }
+                            else if (edge == 1) // top
+                            {
+                                // 任务栏在顶部：窗口放在任务栏右侧
+                                this.Left = rc.right - w;
+                                this.Top = rc.bottom;
+                            }
+                            else if (edge == 0) // left
+                            {
+                                // 任务栏在左侧：窗口放在任务栏右侧
+                                this.Left = rc.right;
+                                this.Top = rc.bottom - h;
+                            }
+                            else // right (edge==2)
+                            {
+                                // 任务栏在右侧：窗口放在任务栏左侧
+                                this.Left = rc.left - w;
+                                this.Top = rc.bottom - h;
                             }
                         }
-                        catch { /* fallback to SystemParameters.WorkArea */ }
 
-                        double left = waRect.Right - w - 8;
-                        double top = waRect.Bottom - h - 8;
-                        // 限制在工作区内
-                        left = Math.Clamp(left, waRect.Left + 2, waRect.Right - w - 2);
-                        top = Math.Clamp(top, waRect.Top + 2, waRect.Bottom - h - 2);
-                        this.Left = left;
-                        this.Top = top;
                         _initialPositioned = true;
-                        LogDebug("SetInitialPositionInWorkArea applied (deferred)");
                     }
                     catch { }
                 }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
